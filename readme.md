@@ -2,7 +2,7 @@
 
 Exploration of and small extensions to `ScalaCheck`.
 
-##Summary
+## Summary
 
 - Project: checkx
 - Summary: `ScalaCheck` eXtensions and eXploration
