@@ -1,2 +1,49 @@
 *.class
 *.log
+
+
+# For inspiration, see https://github.com/github/gitignore. Even though those
+# examples are for git, we can adapt them to HG easily.
+
+# Python/Perl-style regex section
+#################################
+syntax: regexp
+
+## project-specific build artifacts
+.*\#.*\#$
+
+
+# Shell-style glob section
+#################################
+syntax: glob
+
+## General artifacts
+*.o
+*.dat
+*.log
+*.log1
+*.serialized
+*.textmode
+*.sar
+*.pidmap
+*.sctmap
+*.log.*
+out.txt
+*.orig
+
+## Eclipse and Java artifacts
+.classpath
+.project
+.settings/
+bin/**
+*infinitest.filters
+
+# IntelliJ project files
+*.iml
+*.ipr
+*.iws
+.idea/
+
+## Maven
+target/
+
