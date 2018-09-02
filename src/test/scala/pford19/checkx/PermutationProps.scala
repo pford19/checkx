@@ -298,121 +298,122 @@ object PermutationProps extends Properties("permutations") {
     }
   }
 
-  property("permGenerator works") = {
-    def testn(n: Int): Boolean = {
-      val nfact = Combinatorics.factorial(n).toInt
-      val x = PermGenerator.permGenerator(n)
-      val plist = (1 to Combinatorics.factorial(n).toInt).map(_ => x())
-      plist.toSet.size == nfact
-    }
+//  property("permGenerator works") = {
+//    def testn(n: Int): Boolean = {
+//      val nfact = Combinatorics.factorial(n).toInt
+//      val x = PermGenerator.permGenerator(n)
+//      val plist = (1 to Combinatorics.factorial(n).toInt).map(_ => x())
+//      plist.toSet.size == nfact
+//    }
+//
+//    testn(2) &&
+//      testn(3) &&
+////      testn(4) &&
+////      testn(5) &&
+//    true
+//  }
 
-    testn(2) &&
-      testn(3) &&
-//      testn(4) &&
-//      testn(5) &&
-    true
-  }
+//  property("permGenerator is unbounded") = {
+//    def testnm(n: Int, m: Int): Boolean = {
+//      val pg = PermGenerator.permGenerator(n)
+//      val perms = for (_ <- (1 to m)) yield pg()
+//      perms.size == m
+//    }
+//
+//    testnm(4, 400) // there are 24 permutationson 4 elements, 400 just keeps cycling
+//  }
 
-  property("permGenerator is unbounded") = {
-    def testnm(n: Int, m: Int): Boolean = {
-      val pg = PermGenerator.permGenerator(n)
-      val perms = for (_ <- (1 to m)) yield pg()
-      perms.size == m
-    }
+//////  property("perfStream generates n! permutations and starts with identity") = {
+//////    def testn(n: Int): Boolean = {
+//////      val nfact = Combinatorics.factorial(n).toInt
+//////      val x = PermGenerator.permStream(n)
+//////      val plist = x.take(nfact)
+//////      plist.head.isIdentity &&
+//////        plist.toSet.size == nfact
+////
+////    }
+//
+//    testn(2) && testn(3) && testn(4) && testn(5)
+//  }
 
-    testnm(4, 400) // there are 24 permutationson 4 elements, 400 just keeps cycling
-  }
+//  property("perfStream is repeating cycle") = {
+//    def testn(n: Int): Boolean = {
+//      val nfact = Combinatorics.factorial(n).toInt
+//      val x = PermGenerator.permStream(n)
+//      val plist = x.take(2 * nfact + 1) // should start and end with identity
+//      println(s"Debug: n=$n, n!=$nfact, ${plist.size}, ${plist.toSet.size}, ${plist.filter(_.isIdentity).size}")
+//
+//      plist.filter(_.isIdentity).size == 3 &&
+//        plist.head.isIdentity &&
+//        plist.last.isIdentity
+//
+//    }
+//
+//    testn(2) &&
+//      testn(3) &&
+////      testn(4) &&
+////      testn(5) &&
+//      true
+//  }
 
-  property("perfStream generates n! permutations and starts with identity") = {
-    def testn(n: Int): Boolean = {
-      val nfact = Combinatorics.factorial(n).toInt
-      val x = PermGenerator.permStream(n)
-      val plist = x.take(nfact)
-      plist.head.isIdentity &&
-        plist.toSet.size == nfact
+//  property("perfIterator head is identity") = {
+//    val it = PermGenerator.permIterator(5)
+//    it.hasNext &&
+//      it.next.isIdentity
+//  }
 
-    }
+//  property("perfIterator(n) n in (2 to 5) works") = {
+//    def testn(n: Int) = {
+//
+//      val dfact = Combinatorics.factorial(n)
+//      require(Math.ulp(dfact) < 1.0d, s"n! for n=$n is too large to represent as an exact Double integer: $dfact")
+//      val nfact = dfact.toLong
+//      require(nfact <= Int.MaxValue, s"n! for n=$n is too larget to represent as an Int: ${nfact}")
+//
+//      val it = PermGenerator.permIterator(n)
+//      val perms = it.take(nfact.toInt).toList // 120 = 5!
+//      println(s"DEBUG perms.size == ${perms.size}")
+//      println(s"DEBUG perms.set.size == ${perms.toSet.size}")
+//      val iterator_exhausted = !it.hasNext
+//      val expected_size = perms.size == nfact
+//      val expected_head = perms.head.isIdentity
+//      val expected_set_size = perms.toSet.size == nfact
+//
+//      iterator_exhausted &&
+//        expected_size &&
+//        expected_set_size &&
+//        expected_head &&
+//        true
+//    }
+//
+//    //testn(5) &&
+//    //testn(4) &&
+//    testn(3) &&
+//      testn(2) &&
+//      true
+//  }
 
-    testn(2) && testn(3) && testn(4) && testn(5)
-  }
-  property("perfStream is repeating cycle") = {
-    def testn(n: Int): Boolean = {
-      val nfact = Combinatorics.factorial(n).toInt
-      val x = PermGenerator.permStream(n)
-      val plist = x.take(2 * nfact + 1) // should start and end with identity
-      println(s"Debug: n=$n, n!=$nfact, ${plist.size}, ${plist.toSet.size}, ${plist.filter(_.isIdentity).size}")
-
-      plist.filter(_.isIdentity).size == 3 &&
-        plist.head.isIdentity &&
-        plist.last.isIdentity
-
-    }
-
-    testn(2) &&
-      testn(3) &&
-//      testn(4) &&
-//      testn(5) &&
-      true
-  }
-
-  property("perfIterator head is identity") = {
-    val it = PermGenerator.permIterator(5)
-    it.hasNext &&
-      it.next.isIdentity
-  }
-
-  property("perfIterator(n) n in (2 to 5) works") = {
-    def testn(n: Int) = {
-
-      val dfact = Combinatorics.factorial(n)
-      require(Math.ulp(dfact) < 1.0d, s"n! for n=$n is too large to represent as an exact Double integer: $dfact")
-      val nfact = dfact.toLong
-      require(nfact <= Int.MaxValue, s"n! for n=$n is too larget to represent as an Int: ${nfact}")
-
-      val it = PermGenerator.permIterator(n)
-      val perms = it.take(nfact.toInt).toList // 120 = 5!
-      println(s"DEBUG perms.size == ${perms.size}")
-      println(s"DEBUG perms.set.size == ${perms.toSet.size}")
-      val iterator_exhausted = !it.hasNext
-      val expected_size = perms.size == nfact
-      val expected_head = perms.head.isIdentity
-      val expected_set_size = perms.toSet.size == nfact
-
-      iterator_exhausted &&
-        expected_size &&
-        expected_set_size &&
-        expected_head &&
-        true
-    }
-
-    //testn(5) &&
-    //testn(4) &&
-    testn(3) &&
-      testn(2) &&
-      true
-  }
-
-  property("permGenerator(-1, 0, 1) all work expected") = {
-    val neg1fails = Try {
-      PermGenerator.permGenerator(-1)
-    } match {
-      case Success(pg) => false
-      case Failure(e) => true
-    }
-    val zerosuccess = Try {
-      PermGenerator.permGenerator(0)
-    } match {
-      case Success(pg) => true
-      case Failure(e) => false
-    }
-    val onesuccess = Try {
-      PermGenerator.permGenerator(1)
-    } match {
-      case Success(pg) => true
-      case Failure(e) => false
-    }
-    neg1fails && zerosuccess && onesuccess
-  }
+//  property("permGenerator(-1, 0, 1) all work expected") = {
+//    val neg1fails = Try {
+//      PermGenerator.permGenerator(-1)
+//    } match {
+//      case Success(pg) => false
+//      case Failure(e) => true
+//    }
+//    val zerosuccess = Try {
+//      PermGenerator.permGenerator(0)
+//    } match {
+//      case Success(pg) => true
+//      case Failure(e) => false
+//    }
+//    val onesuccess = Try {
+//      PermGenerator.permGenerator(1)
+//    } match {
+//      case Success(pg) => true
+//      case Failure(e) => false
+//    }
+//    neg1fails && zerosuccess && onesuccess
+//  }
 
   //  property("permGenerator(500) performs some basic operations") = {
   //    val it = PermGenerator.permIterator(100)

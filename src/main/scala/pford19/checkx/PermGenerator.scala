@@ -45,7 +45,7 @@ object PermGenerator {
                             lastTransposition: Cycle,
                             callCount: Int) {
 
-    require(degree > 1, dump_state("require degree > 1"))
+    require(degree >= 0, dump_state("require degree >= 0"))
     require(p.size == degree + 1, dump_state("require p.size==degree+1)"))
     require(p.size == d.size, dump_state("require p.size==d.size)"))
     require(perm.degree == degree, dump_state(s"require perm.degree == degree, but perm.degree=${perm.degree}"))
@@ -53,7 +53,7 @@ object PermGenerator {
     def dump_state(msg: String): String =
       s"""$msg
          | degree=${this.degree}, call count=${this.callCount}
-         | p=${this.p.tail.tail}, d=${this.d.tail.tail}, lastTrans=${this.lastTransposition} perm=${this.perm.cyclicRepresentation}
+         | p=${this.p.tail}, d=${this.d.tail}, lastTrans=${this.lastTransposition} perm=${this.perm.cyclicRepresentation}
         """.stripMargin
 
   }
@@ -96,31 +96,19 @@ object PermGenerator {
       */
     def initialState(degree: Int): CombinedState = {
 
-      // These vectors are copied from the original algorithm.
-      // They are declared as Algol arrays with index range[2:Degree].
-      // Scala equivalent is an array of size (degree+1) with slots 0 and 1 unused.
-      val newd = mutable.ArraySeq.fill(degree + 1)(1)
-      val newp = mutable.ArraySeq.fill(degree + 1)(0)
-      for (r <- List(newd, newp); j <- List(0, 1)) r(j) = UNUSED_SLOT
-
-      val result = new CombinedState(
-        inner = initialLocalState(degree),
-        outer = initialIterationState(degree)
+      new CombinedState(
+        inner = StateOps.initialLocalState(degree),
+        outer = StateOps.initialIterationState(degree)
       )
-      result
-
     }
+
+  }
+
+  object StateOps {
 
     def initialLocalState(degree: Int): InnerState = {
 
-      // These vectors are copied from the original algorithm.
-      // They are declared as Algol arrays with index range[2:Degree].
-      // Scala equivalent is an array of size (degree+1) with slots 0 and 1 unused.
-      val newd = mutable.ArraySeq.fill(degree + 1)(1)
-      val newp = mutable.ArraySeq.fill(degree + 1)(0)
-      for (r <- List(newd, newp); j <- List(0, 1)) r(j) = UNUSED_SLOT
-
-      val result = new InnerState(
+      new InnerState(
         n = degree,
         q = 0,
         k = 0,
@@ -128,18 +116,19 @@ object PermGenerator {
         goto_transpose = false,
         reinitialize_on_entry = false,
       )
-      result
 
     }
 
     def initialIterationState(degree: Int): IterationState = {
-
       // These vectors are copied from the original algorithm.
       // They are declared as Algol arrays with index range[2:Degree].
       // Scala equivalent is an array of size (degree+1) with slots 0 and 1 unused.
+      // Slot 0 is unused because the algol algorithm indexes the permuted set from 1.
+      // Slot 1 is unused because the algol algorithm only requires degree-1 slots indexed from 2 (if 2 >= degree)
+      // Active slots are indexed from 2 to degree. For degree 0 or 1 there are no active slots.
+      // For trival cases degree = 0 or 1 (since S(0) = S(1) = I) these arrays have size 1 and 2 respectively.
       val newd = mutable.ArraySeq.fill(degree + 1)(1)
       val newp = mutable.ArraySeq.fill(degree + 1)(0)
-      for (r <- List(newd, newp); j <- List(0, 1)) r(j) = UNUSED_SLOT
 
       val result = new IterationState(degree = degree,
         p = newp,
@@ -148,7 +137,6 @@ object PermGenerator {
         lastTransposition = Cycle(0),
         callCount = 0)
       result
-
     }
   }
 
@@ -173,7 +161,7 @@ object PermGenerator {
     * @return Iterator over
     */
   def unboundedStateIterator(degree: Int): Iterator[IterationState] = {
-    var nextstate = nextPermutation(CombinedState.initialIterationState(degree))
+    var nextstate = nextPermutation(StateOps.initialIterationState(degree))
     new Iterator[IterationState] {
       val hasNext: Boolean = true
 
@@ -249,13 +237,23 @@ object PermGenerator {
     * Additional wrappers with more sophisticated behavior can be customized as well.
     * IterationState includes both a permuation and a generator transposition.
     *
-    * @param state0 valid seed state
+    * @param state0 valid seed state, with degree >= 2
     * @return pair of (next permutation, next state)
     */
   def nextPermutation(state0: IterationState): IterationState = {
+    state0.degree match {
+      case 0 => state0.copy(callCount = state0.callCount + 1)
+      case 1 => state0.copy(callCount = state0.callCount + 1)
+      case _ => nextPermutation2(state0)
+    }
+
+  }
+
+  def nextPermutation2(state0: IterationState): IterationState = {
+
 
     var iterationState = state0
-    var localState = CombinedState.initialLocalState(state0.degree)
+    var localState = StateOps.initialLocalState(state0.degree)
     // state is TO BE RETIRED
     var combinedState = CombinedState(localState, iterationState)
 
@@ -426,7 +424,7 @@ object PermGenerator {
 
     mutateState {
       if (localState.reinitialize_on_entry) {
-        iterationState = CombinedState.initialIterationState(state0.degree)
+        iterationState = StateOps.initialIterationState(state0.degree)
           .copy(callCount = iterationState.callCount, lastTransposition = iterationState.lastTransposition)
       }
     }
@@ -457,126 +455,126 @@ object PermGenerator {
   }
 
 
-  def permStream(degree: Int): Stream[Permutation] = {
-
-    def stream(p: Permutation, f: () => Permutation): Stream[Permutation] = Stream.cons(p, stream(f(), f))
-
-    stream(PermGroup(degree).identity, permGenerator(degree))
-  }
-
-
-  def permIterator(n0: Int): Iterator[Permutation] = new Iterator[Permutation] {
-
-    // The function permGenerator(n) generates all permutations in an unbounded repeating cycle.
-    // The last value in each cycle is the identity permutation.
-    private val nextPerm = permGenerator(n0)
-
-    // nextOnDeck detects the end of the cycle (identity) and returns None in that case.
-    def nextOnDeck = Some(nextPerm()).filterNot(_.isIdentity)
-
-    // Baseball metaphors: iterator.next == player "atBat"
-    // Successor to next is the iterator.next.next == player "onDeck".
-    //
-    private var atBat: Option[Permutation] = Some(PermGroup(n0).identity)
-
-    // Because permGenerator(n) is unbounded and cyclic we need to look ahead one spot
-    // in order to detect the cycle and terminate the iterator. `onDeck` holds the look-ahead value.
-
-    private var onDeck: Option[Permutation] = nextOnDeck
-    assert(n0 == 1 || onDeck != atBat)
-
-    def next: Permutation = {
-      if (hasNext) {
-        val result = atBat.get // will fail if atBat == None, but in that hasNext is false
-        atBat = onDeck
-        onDeck = nextOnDeck
-        result
-      }
-      else
-        throw new IllegalStateException("!hasNext")
-    }
-
-    def hasNext: Boolean = atBat.nonEmpty
-  }
-
-  /** Permutation generator for degree >= 0.
-    * Degree 0 and 1 have only the trival identity permutation.
-    * <p>
-    * The resulting function returns a new permutation with each call. It is cyclic with cycle
-    * length degree!. (Factorial grows rapidly, e.g. 6! = 720, 7! = 5040).
-    * Each cycle ends with the identity permutation.
-    *
-    * @param degree arbitrary
-    * @return function that generates all permutations of given degree with successive calls
-    */
-  def permGenerator(degree: Int): () => Permutation = {
-    degree match {
-      case 0 => {
-        val id = PermGroup(0).identity
-        () => id
-      }
-      case 1 => {
-        val id = PermGroup(1).identity
-        () => id
-      }
-      case _ => permGenerator2(degree)
-    }
-
-  }
-
-  /** Permutation generator function for degree 2 or greater.
-    *
-    * @param degree
-    * @return
-    */
-  def permGenerator2(degree: Int): () => Permutation = {
+  //  def permStream(degree: Int): Stream[Permutation] = {
+  //
+  //    def stream(p: Permutation, f: () => Permutation): Stream[Permutation] = Stream.cons(p, stream(f(), f))
+  //
+  //    stream(PermGroup(degree).identity, permGenerator(degree))
+  //  }
 
 
-    /** Result is an iterative function that produces all permuations of degree `degree`.
-      * <p>
-      * The value sewquence is cyclic and unbounded. The cycle length is `degree!` (factorial).
-      * <p>
-      * The last value of the cycle is the identity permutation. For degree >= 2, the first permutation
-      * is not the identity.
-      * <p>
-      * For degree = 0 or 1, the cycle length is 1 and the only value returned is the
-      * identity function which is the only permutation on a set of size 0 or size 1.
-      * <p>
-      *
-      * @param degree degree of permutations returned, >= 0.
-      * @return function that is an iterative generator of permutations on a set of size `degree`
-      */
-    def nextF(degree: Int): () => Permutation = {
-      var state = CombinedState.initialIterationState(degree)
-
-      def result = {
-        Try {
-
-          state = nextPermutation(state)
-          state.perm
-        } match {
-          case Success(v) => v
-          case Failure(e) =>
-            throw new RuntimeException(s"${state.dump_state("failed for this input state")}", e)
-        }
-      }
-
-      result _
-    }
-
-    //    def cycleleStream(degree: Int): Stream[Cycle] = {
-    //      val s0 = CombinedState.initialOuterState(degree)
-    //      val s1 = nextPermutation(s0)
-    //      val c1 = s1.lastTransposition
-    //    }
-
-
-    // End of defs.
-
-    val result = nextF(degree)
-
-    result
-  }
+  //  def permIterator(n0: Int): Iterator[Permutation] = new Iterator[Permutation] {
+  //
+  //    // The function permGenerator(n) generates all permutations in an unbounded repeating cycle.
+  //    // The last value in each cycle is the identity permutation.
+  //    private val nextPerm = permGenerator(n0)
+  //
+  //    // nextOnDeck detects the end of the cycle (identity) and returns None in that case.
+  //    def nextOnDeck = Some(nextPerm()).filterNot(_.isIdentity)
+  //
+  //    // Baseball metaphors: iterator.next == player "atBat"
+  //    // Successor to next is the iterator.next.next == player "onDeck".
+  //    //
+  //    private var atBat: Option[Permutation] = Some(PermGroup(n0).identity)
+  //
+  //    // Because permGenerator(n) is unbounded and cyclic we need to look ahead one spot
+  //    // in order to detect the cycle and terminate the iterator. `onDeck` holds the look-ahead value.
+  //
+  //    private var onDeck: Option[Permutation] = nextOnDeck
+  //    assert(n0 == 1 || onDeck != atBat)
+  //
+  //    def next: Permutation = {
+  //      if (hasNext) {
+  //        val result = atBat.get // will fail if atBat == None, but in that hasNext is false
+  //        atBat = onDeck
+  //        onDeck = nextOnDeck
+  //        result
+  //      }
+  //      else
+  //        throw new IllegalStateException("!hasNext")
+  //    }
+  //
+  //    def hasNext: Boolean = atBat.nonEmpty
+  //  }
+  //
+  //  /** Permutation generator for degree >= 0.
+  //    * Degree 0 and 1 have only the trival identity permutation.
+  //    * <p>
+  //    * The resulting function returns a new permutation with each call. It is cyclic with cycle
+  //    * length degree!. (Factorial grows rapidly, e.g. 6! = 720, 7! = 5040).
+  //    * Each cycle ends with the identity permutation.
+  //    *
+  //    * @param degree arbitrary
+  //    * @return function that generates all permutations of given degree with successive calls
+  //    */
+  //  def permGenerator(degree: Int): () => Permutation = {
+  //    degree match {
+  //      case 0 => {
+  //        val id = PermGroup(0).identity
+  //        () => id
+  //      }
+  //      case 1 => {
+  //        val id = PermGroup(1).identity
+  //        () => id
+  //      }
+  //      case _ => permGenerator2(degree)
+  //    }
+  //
+  //  }
+  //
+  //  /** Permutation generator function for degree 2 or greater.
+  //    *
+  //    * @param degree
+  //    * @return
+  //    */
+  //  def permGenerator2(degree: Int): () => Permutation = {
+  //
+  //
+  //    /** Result is an iterative function that produces all permuations of degree `degree`.
+  //      * <p>
+  //      * The value sewquence is cyclic and unbounded. The cycle length is `degree!` (factorial).
+  //      * <p>
+  //      * The last value of the cycle is the identity permutation. For degree >= 2, the first permutation
+  //      * is not the identity.
+  //      * <p>
+  //      * For degree = 0 or 1, the cycle length is 1 and the only value returned is the
+  //      * identity function which is the only permutation on a set of size 0 or size 1.
+  //      * <p>
+  //      *
+  //      * @param degree degree of permutations returned, >= 0.
+  //      * @return function that is an iterative generator of permutations on a set of size `degree`
+  //      */
+  //    def nextF(degree: Int): () => Permutation = {
+  //      var state = CombinedState.initialIterationState(degree)
+  //
+  //      def result = {
+  //        Try {
+  //
+  //          state = nextPermutation(state)
+  //          state.perm
+  //        } match {
+  //          case Success(v) => v
+  //          case Failure(e) =>
+  //            throw new RuntimeException(s"${state.dump_state("failed for this input state")}", e)
+  //        }
+  //      }
+  //
+  //      result _
+  //    }
+  //
+  //    //    def cycleleStream(degree: Int): Stream[Cycle] = {
+  //    //      val s0 = CombinedState.initialOuterState(degree)
+  //    //      val s1 = nextPermutation(s0)
+  //    //      val c1 = s1.lastTransposition
+  //    //    }
+  //
+  //
+  //    // End of defs.
+  //
+  //    val result = nextF(degree)
+  //
+  //    result
+  //  }
 
 
 }
