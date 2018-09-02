@@ -20,8 +20,8 @@ object PermGenerator {
 
     def dumpState(msg: String): String =
       s"""$msg
-         | ${this.outer.dump_state("Outer State")}
-         | ${this.inner.dump_state("Inner State")}
+         | ${this.outer.dumpState("Outer State")}
+         | ${this.inner.dumpState("Inner State")}
         """.stripMargin
 
 
@@ -45,12 +45,12 @@ object PermGenerator {
                             lastTransposition: Cycle,
                             callCount: Int) {
 
-    require(degree >= 0, dump_state("require degree >= 0"))
-    require(p.size == degree + 1, dump_state("require p.size==degree+1)"))
-    require(p.size == d.size, dump_state("require p.size==d.size)"))
-    require(perm.degree == degree, dump_state(s"require perm.degree == degree, but perm.degree=${perm.degree}"))
+    require(degree >= 0, dumpState("require degree >= 0"))
+    require(p.size == degree + 1, dumpState("require p.size==degree+1)"))
+    require(p.size == d.size, dumpState("require p.size==d.size)"))
+    require(perm.degree == degree, dumpState(s"require perm.degree == degree, but perm.degree=${perm.degree}"))
 
-    def dump_state(msg: String): String =
+    def dumpState(msg: String): String =
       s"""$msg
          | degree=${this.degree}, call count=${this.callCount}
          | p=${this.p.tail}, d=${this.d.tail}, lastTrans=${this.lastTransposition} perm=${this.perm.cyclicRepresentation}
@@ -77,7 +77,7 @@ object PermGenerator {
                        ) {
     require(!(goto_final_exit && goto_transpose), "state invariant: both goto's can't be true")
 
-    def dump_state(msg: String): String =
+    def dumpState(msg: String): String =
       s"""$msg
          | n=${this.n}, q=${this.q}, k=${this.k}
          | final_exit=${this.goto_final_exit}, goto_transpose=${this.goto_transpose}, first=${this.reinitialize_on_entry}
@@ -253,25 +253,23 @@ object PermGenerator {
 
 
     var iterationState = state0
+    // Copy p and d to allow them to be mutated in place locally.
+    // These ArraySeq are returned in the result state.
+    val p: mutable.ArraySeq[Int] = state0.p.clone()
+    val d: mutable.ArraySeq[Int] = state0.d.clone()
     var localState = StateOps.initialLocalState(state0.degree)
-    // state is TO BE RETIRED
-    var combinedState = CombinedState(localState, iterationState)
 
     def mutateState(f: => Any) = {
       f // evalute f for side effects on localState and iterationState
-      combinedState = CombinedState(localState, iterationState)
     }
 
     var loopCount = 0
 
-
     // LOGIC
-
-    //      push_state_or_merge(combinedState, "entry")
 
     mutateState {
       // init_p_and_d
-      assert(!localState.reinitialize_on_entry, combinedState.dumpState("expect reinit on entry false"))
+      assert(!localState.reinitialize_on_entry, localState.dumpState(("expect reinit on entry false")))
       localState = localState.copy(n = state0.degree, k = 0, goto_final_exit = false, goto_transpose = false, reinitialize_on_entry = false)
       iterationState = iterationState.copy(callCount = iterationState.callCount + 1)
     }
@@ -285,11 +283,11 @@ object PermGenerator {
 
     }
 
-    assert(localState.k == 0 && localState.n == state0.degree && !localState.goto_transpose && !localState.goto_final_exit && !localState.reinitialize_on_entry, combinedState.dumpState("failed assertion on entry"))
+    assert(localState.k == 0 && localState.n == state0.degree && !localState.goto_transpose && !localState.goto_final_exit && !localState.reinitialize_on_entry, localState.dumpState("failed assertion on entry"))
 
     loopCount = 0
-    var loopStart = combinedState.copy()
-    val loopInner = loopStart.inner
+    var loopStartIteration = iterationState.copy()
+    val loopStartLocal = localState.copy()
     val MAX_LOOP_COUNT = state0.degree - 1
     logLoopState("loop start", loopCount)
     do {
@@ -297,12 +295,10 @@ object PermGenerator {
       // update p and q
       mutateState {
 
-        assert(1 < localState.n && localState.n <= iterationState.degree, combinedState.dumpState("1 < n <= degree"))
-        val newq = iterationState.p(localState.n) + iterationState.d(localState.n)
-        val newp = iterationState.p.clone()
-        newp(localState.n) = newq
-        assert(newq <= localState.n, combinedState.dumpState(s"newq==$newq, !<=n"))
-        iterationState = iterationState.copy(p = newp)
+        assert(1 < localState.n && localState.n <= iterationState.degree, localState.dumpState("1 < n <= degree"))
+        val newq = p(localState.n) + d(localState.n)
+        p(localState.n) = newq
+        assert(newq <= localState.n, localState.dumpState(s"newq==$newq, !<=n"))
         localState = localState.copy(q = newq)
         logLoopState("update p and q", loopCount)
       }
@@ -310,9 +306,7 @@ object PermGenerator {
       if (localState.q == localState.n)
       //set d(n) = -1
         mutateState {
-          val d = iterationState.d.clone
           d(localState.n) = -1
-          iterationState = iterationState.copy(d = d)
           logLoopState("set d(n)=-1", loopCount)
         }
       else if (localState.q != 0)
@@ -326,9 +320,7 @@ object PermGenerator {
       // reset d(n) = 1 and k += 1
         mutateState {
           val newk = localState.k + 1
-          val newd = iterationState.d.clone
-          newd(localState.n) = 1
-          iterationState = iterationState.copy(d = newd)
+          d(localState.n) = 1
           localState = localState.copy(k = newk)
           logLoopState(s"d(n)=1, k+=1", loopCount)
         }
@@ -350,7 +342,11 @@ object PermGenerator {
 
 
       loopCount += 1
-      assert(loopCount <= state0.degree - 1, s"loop count $loopCount exceeds max ${state0.degree - 1}, state=${combinedState.dumpState("end of loop body")}")
+      assert(loopCount <= state0.degree - 1,
+        s"loop count $loopCount exceeds max ${state0.degree - 1}" +
+          s", local state=${localState.dumpState("end of loop body")}" +
+          s", iteration state=${iterationState.dumpState("end of loop body")}"
+      )
     }
 
     while (!localState.goto_transpose && !localState.goto_final_exit)
@@ -381,16 +377,16 @@ object PermGenerator {
 
     // Detailed logging at this point to help develop an understanding of loop behavior.
     if (DEBUGGING_ON) {
-      val toggled_final = loopStart.inner.goto_final_exit != localState.goto_final_exit
-      val toggled_transpose = loopStart.inner.goto_transpose != localState.goto_transpose
+      val toggled_final = loopStartLocal.goto_final_exit != localState.goto_final_exit
+      val toggled_transpose = loopStartLocal.goto_transpose != localState.goto_transpose
       val exclusive_toggle = toggled_final != toggled_transpose
-      assert(exclusive_toggle, s"final or transpose, but not both ${combinedState.dumpState("loop exit")}")
-      val ddiff = iterationState.d.tail.tail.sum - loopStart.outer.d.tail.tail.sum
-      val ndiff = localState.n - loopStart.inner.n
-      val kdiff = localState.k - loopStart.inner.k
-      val d_mutated = if (loopStart.outer.d != iterationState.d) f"d${ddiff}%+2d" else "   "
-      val k_mutated = if (loopStart.inner.k != localState.k) f"k${kdiff}%+2d" else "   "
-      val n_mutated = if (loopStart.inner.n != localState.n) f"n${ndiff}%+2d" else "   "
+      assert(exclusive_toggle, s"final or transpose, but not both ${localState.dumpState("loop exit")}")
+      val ddiff = iterationState.d.tail.tail.sum - loopStartIteration.d.tail.tail.sum
+      val ndiff = localState.n - loopStartLocal.n
+      val kdiff = localState.k - loopStartLocal.k
+      val d_mutated = if (loopStartIteration.d != iterationState.d) f"d${ddiff}%+2d" else "   "
+      val k_mutated = if (loopStartLocal.k != localState.k) f"k${kdiff}%+2d" else "   "
+      val n_mutated = if (loopStartLocal.n != localState.n) f"n${ndiff}%+2d" else "   "
 
       val exit_condition = if (toggled_final) " f" else "t " // f for goto_final_exit, t for goto_transpose
 
@@ -401,9 +397,11 @@ object PermGenerator {
         println(f"DEBUG >>>> LOOP degree=${iterationState.degree}%3d, call=${iterationState.callCount}%4d, loop=$loopCount%2d, $summary")
       if (DEBUGGING_ON)
         println(List(
-          loopStart.dumpState("loop start"),
-          combinedState.dumpState("loop end"))
-          .mkString("\n"))
+          loopStartIteration.dumpState("loop start"),
+          loopStartLocal.dumpState("loop start"),
+          iterationState.dumpState("loop end")),
+          localState.dumpState("loop end")
+            .mkString("\n"))
     }
 
     if (localState.goto_final_exit)
@@ -415,11 +413,16 @@ object PermGenerator {
     mutateState {
       // transpose
       val t = localState.q + localState.k
-      assert(t > 0, combinedState.dumpState("q > 0"))
-      assert(t < iterationState.degree, combinedState.dumpState("q < degree"))
+      assert(t > 0, localState.dumpState("q > 0"))
+      assert(t < iterationState.degree, localState.dumpState(s"q < degree=${iterationState.degree}"))
       val trans = Cycle(t - 1, t) // Cycles act on (0 to degree-1)
       val newperm = iterationState.perm * trans
-      iterationState = iterationState.copy(perm = newperm, lastTransposition = trans)
+      iterationState = iterationState.copy(
+        perm = newperm,
+        lastTransposition = trans,
+        p = p, // not a clone, return a reference to the local ArraySeq
+        d = d // ditto
+      )
     }
 
     mutateState {
@@ -431,6 +434,7 @@ object PermGenerator {
 
     // SOME POSTCONDITIONS
 
+
     // call count incremented by 1
     assert(iterationState.callCount == state0.callCount + 1)
 
@@ -439,9 +443,9 @@ object PermGenerator {
     assert(iterationState.perm != state0.perm)
 
     // degree! is cycle length, perm should be the identity when call count is a multiple of the cycle length
-    // degreeFactorial <= 0 signals that degree! is too large to be represented as an integral double
+    // degreeFactorial == None signals that degree! is too large to be represented as a Long
     // This postcondition reads:
-    // (degree! > 0) && (callCount is a multiple of degree!) IMPLIES iterationState.perm.isIdentity
+    // (degree! can be represented as a Long) && (callCount is a multiple of degree!) IMPLIES iterationState.perm.isIdentity
     {
       /** degree! (factorial), if it is small enough to be represented as an exact Double integer value. (37 bits), otherwise
         * -1.  Used to assert postcondition on cycles for small degree.
@@ -453,130 +457,6 @@ object PermGenerator {
 
     iterationState
   }
-
-
-  //  def permStream(degree: Int): Stream[Permutation] = {
-  //
-  //    def stream(p: Permutation, f: () => Permutation): Stream[Permutation] = Stream.cons(p, stream(f(), f))
-  //
-  //    stream(PermGroup(degree).identity, permGenerator(degree))
-  //  }
-
-
-  //  def permIterator(n0: Int): Iterator[Permutation] = new Iterator[Permutation] {
-  //
-  //    // The function permGenerator(n) generates all permutations in an unbounded repeating cycle.
-  //    // The last value in each cycle is the identity permutation.
-  //    private val nextPerm = permGenerator(n0)
-  //
-  //    // nextOnDeck detects the end of the cycle (identity) and returns None in that case.
-  //    def nextOnDeck = Some(nextPerm()).filterNot(_.isIdentity)
-  //
-  //    // Baseball metaphors: iterator.next == player "atBat"
-  //    // Successor to next is the iterator.next.next == player "onDeck".
-  //    //
-  //    private var atBat: Option[Permutation] = Some(PermGroup(n0).identity)
-  //
-  //    // Because permGenerator(n) is unbounded and cyclic we need to look ahead one spot
-  //    // in order to detect the cycle and terminate the iterator. `onDeck` holds the look-ahead value.
-  //
-  //    private var onDeck: Option[Permutation] = nextOnDeck
-  //    assert(n0 == 1 || onDeck != atBat)
-  //
-  //    def next: Permutation = {
-  //      if (hasNext) {
-  //        val result = atBat.get // will fail if atBat == None, but in that hasNext is false
-  //        atBat = onDeck
-  //        onDeck = nextOnDeck
-  //        result
-  //      }
-  //      else
-  //        throw new IllegalStateException("!hasNext")
-  //    }
-  //
-  //    def hasNext: Boolean = atBat.nonEmpty
-  //  }
-  //
-  //  /** Permutation generator for degree >= 0.
-  //    * Degree 0 and 1 have only the trival identity permutation.
-  //    * <p>
-  //    * The resulting function returns a new permutation with each call. It is cyclic with cycle
-  //    * length degree!. (Factorial grows rapidly, e.g. 6! = 720, 7! = 5040).
-  //    * Each cycle ends with the identity permutation.
-  //    *
-  //    * @param degree arbitrary
-  //    * @return function that generates all permutations of given degree with successive calls
-  //    */
-  //  def permGenerator(degree: Int): () => Permutation = {
-  //    degree match {
-  //      case 0 => {
-  //        val id = PermGroup(0).identity
-  //        () => id
-  //      }
-  //      case 1 => {
-  //        val id = PermGroup(1).identity
-  //        () => id
-  //      }
-  //      case _ => permGenerator2(degree)
-  //    }
-  //
-  //  }
-  //
-  //  /** Permutation generator function for degree 2 or greater.
-  //    *
-  //    * @param degree
-  //    * @return
-  //    */
-  //  def permGenerator2(degree: Int): () => Permutation = {
-  //
-  //
-  //    /** Result is an iterative function that produces all permuations of degree `degree`.
-  //      * <p>
-  //      * The value sewquence is cyclic and unbounded. The cycle length is `degree!` (factorial).
-  //      * <p>
-  //      * The last value of the cycle is the identity permutation. For degree >= 2, the first permutation
-  //      * is not the identity.
-  //      * <p>
-  //      * For degree = 0 or 1, the cycle length is 1 and the only value returned is the
-  //      * identity function which is the only permutation on a set of size 0 or size 1.
-  //      * <p>
-  //      *
-  //      * @param degree degree of permutations returned, >= 0.
-  //      * @return function that is an iterative generator of permutations on a set of size `degree`
-  //      */
-  //    def nextF(degree: Int): () => Permutation = {
-  //      var state = CombinedState.initialIterationState(degree)
-  //
-  //      def result = {
-  //        Try {
-  //
-  //          state = nextPermutation(state)
-  //          state.perm
-  //        } match {
-  //          case Success(v) => v
-  //          case Failure(e) =>
-  //            throw new RuntimeException(s"${state.dump_state("failed for this input state")}", e)
-  //        }
-  //      }
-  //
-  //      result _
-  //    }
-  //
-  //    //    def cycleleStream(degree: Int): Stream[Cycle] = {
-  //    //      val s0 = CombinedState.initialOuterState(degree)
-  //    //      val s1 = nextPermutation(s0)
-  //    //      val c1 = s1.lastTransposition
-  //    //    }
-  //
-  //
-  //    // End of defs.
-  //
-  //    val result = nextF(degree)
-  //
-  //    result
-  //  }
-
-
 }
 
 object ALGOL_SOURCE {
