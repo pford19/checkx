@@ -1,7 +1,7 @@
 package pford19.checkx
 
 import org.scalacheck.Gen
-
+/** Scalacheck generators for permutations. */
 object PermutationGenerator {
 
   /**
@@ -18,7 +18,7 @@ object PermutationGenerator {
     * @param n
     * @return
     */
-  def weightedPermutations(n: Int): Gen[Permutation] = {
+  def weightedPermutations(n: Int): Gen[Perm] = {
     val pg = PermGroup(n)
     Gen.frequency(
       (1, Gen.oneOf(List(pg.identity, (pg.reverse)))),
@@ -30,7 +30,7 @@ object PermutationGenerator {
     )
   }
 
-  def maximalSwaps(n: Int): Gen[Permutation] = {
+  def maximalSwaps(n: Int): Gen[Perm] = {
     val pairs = (0 to n-1).grouped(2).filter(_.size==2).toList
     assert(pairs.size == n/2, (n, n/2, pairs.size)) // n odd or even
 
@@ -42,7 +42,7 @@ object PermutationGenerator {
     // if n<=1 then reverse is also the identity. Otherwise
     // it is non-trivial, consisting of n/2 2-cycles, which we
     // assert.
-    assert(n <= 1 || reverse.cycles.size == n/2)
+    assert(n <= 1 || reverse.cycles.size == n/2, (reverse, reverse.cycles, n, n/2))
     assert(n <= 1 || reverse.cycles.forall(_.size == 2))
     assert((n <= 1) == reverse.isIdentity)
     // generate random shufflings of the template by
@@ -56,7 +56,7 @@ object PermutationGenerator {
     * @param n
     * @return
     */
-  def uniformPermutations(n: Int): Gen[Permutation] =
+  def uniformPermutations(n: Int): Gen[Perm] =
     Gen.const((0 to n - 1).toVector).map(v => scala.util.Random.shuffle(v)).map(Permutation(_))
 
   /** An empty collection for the identity permutation.
@@ -65,7 +65,7 @@ object PermutationGenerator {
     * */
   def shrinkCycle(c: Cycle): Cycle = if (c.size > 2) Cycle(c.rep.tail) else Cycle(Nil)
 
-  def shrinkOnce(p: Permutation): Seq[Permutation] = {
+  def shrinkOnce(p: Perm): Seq[Perm] = {
     val cycles: Vector[Cycle] = p.cycles.filter(_.size > 0).toVector
     val shrunkenCycles = for (i <- 0 to cycles.size - 1) yield (cycles.take(i) ++: (shrinkCycle(cycles(i)) +: cycles.drop(i + 1)))
     val result = shrunkenCycles.map(cycles => Permutation.fromCycles(p.degree)(cycles))
@@ -73,8 +73,8 @@ object PermutationGenerator {
     result
   }
 
-  def shrinkTree(p: Permutation): Seq[Permutation] = {
-    def loop(q: Permutation): Seq[Permutation] = {
+  def shrinkTree(p: Perm): Seq[Perm] = {
+    def loop(q: Perm): Seq[Perm] = {
       if (q.isIdentity) List(q)
       else {
         val result = for {r <- shrinkOnce(q)} yield r +: loop(r)

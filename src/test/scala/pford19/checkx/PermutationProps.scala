@@ -26,35 +26,13 @@ object PermutationProps extends Properties("permutations") {
 
   // Generators
   val g04 = Gen.choose(0, 4)
-  val swaps = for (n <- Gen.choose(0, 4); m <- Gen.choose(0, 4) if m != n) yield pg5.transpose(n, m)
-  val threeCycles = for (i <- g04; j <- g04 if i != j; k <- g04 if i != k && j != k) yield Cycle(i, j, k).asPermutation(5)
+  val swaps = for (n <- Gen.choose(0, 3); m <- Gen.choose(n+1, 4)) yield pg5.transpose(n, m)
+  val threeCycles = for (i <- g04; j <- g04 if i != j; k <- g04 if i != k && j != k) yield Cycle(i, j, k)
 
-
-  // Static props
-  property("static: elements") = pg5.elements == (0 to 4)
-  property("static: identity is order 1") = pg5.identity.order == 1
-  property("static: identity has n fixed points") = pg5.identity.fixedPoints.size == pg5.degree
-  property("static: swaps are self inverse") = swap01.inverse == swap01
-  property("static: swaps are order 2") = swap01.order == 2
-  property("static: swap12 is a 2-cycle") = cycle01.asPermutation(swap01.degree) == swap01
-  property("static: cycle12 is normalized") = cycle01.normalized == cycle01
-  property("static: different orders imply != cycles") = cycle01 != cycle10 && cycle01.normalized == cycle10.normalized
-  property("static: full cycle is order 5") = pg5.rotation.order == 5
-  property("static: full cycle inverse is order 5") = pg5.rotation.inverse.order == 5
-  property("static: full cycle inverse is order 5") = pg5.rotation.inverse.order == 5
-  property("static: disjoint 2- and 3-cycles commute") = {
-    val p3 = cycle123.asPermutation(5)
-    val p2 = cycle04.asPermutation(5)
-    p3.fixedPoints.intersect(p2.fixedPoints).isEmpty &&
-      p3 * p2 == p2 * p3
-  }
 
   // powers properties
-  property("identity powers size == 1") = pg5.identity.powers.size == 1
-  property("p and inverse have same order") = forAll(PermutationGenerator.uniformPermutations(6)) { p: Permutation => p.powers.size == p.inverse.powers.size }
-  property("powers(0) == identity") = forAll(PermutationGenerator.uniformPermutations(6)) { p: Permutation => p.powers.head == p.identity }
-  property("powers,last == inverse") = forAll(PermutationGenerator.uniformPermutations(6)) { p: Permutation => p.powers.last == p.inverse }
-  property("powers.size == order") = forAll(PermutationGenerator.uniformPermutations(6)) { p: Permutation => p.powers.size == p.order }
+  property("identity powers size == 1") = pg5.identity.order == 1
+  property("p and inverse have same order") = forAll(PermutationGenerator.uniformPermutations(6)) { p: Perm => p.order == p.inverse.order }
 
   // inverse properties
   property("identity = identity.inverse") = pg5.identity == pg5.identity.inverse
@@ -80,7 +58,7 @@ object PermutationProps extends Properties("permutations") {
     val rots = pg0.rotations
     val revrots = pg0.reverseRotations
     val swaps = pg0.transpositions
-    val pows = p.powers
+    val pows = (0 to p.order-1).map(p^_).toList
     p.isIdentity &&
       p == id &&
       p.degree == 0 &&
@@ -96,7 +74,7 @@ object PermutationProps extends Properties("permutations") {
     val rots = pg1.rotations.toList
     val revrots = pg1.reverseRotations.toList
     val swaps = pg1.transpositions.toList
-    val pows = p.powers.toList
+    val pows = (0 to p.order-1).map(p^_).toList
     p.isIdentity &&
       p == id &&
       p.degree == 1 &&
@@ -125,18 +103,16 @@ object PermutationProps extends Properties("permutations") {
   property("3-cycles are cycles") = forAll(threeCycles) {
     _.isCycle
   }
-  property("2-cycles are cycles") = forAll(swaps) {
-    _.isCycle
-  }
+  property("2-cycles are cycles") = forAll(swaps) (_.isCycle)
 
   property("(012)(34) is not a cycle") = {
     val s = pg5.transpose(3, 4)
-    val t = Cycle(0, 1, 2).asPermutation(5)
+    val t = Cycle(0, 1, 2)
     !(s * t).isCycle && !(t * s).isCycle
   }
 
   property("(012) has orbits (012)(3)(4)") = {
-    val p = Cycle(0, 1, 2).asPermutation(5)
+    val p = Cycle(0, 1, 2)
     p.orbit(0) == Cycle(0, 1, 2) &&
       p.orbit(3) == Cycle(3) &&
       p.orbit(4) == Cycle(4)
@@ -145,7 +121,7 @@ object PermutationProps extends Properties("permutations") {
   property("(012)(34) has 2 orbits") = {
 
     val s = pg5.transpose(3, 4)
-    val t = Cycle(0, 1, 2).asPermutation(5)
+    val t = Cycle(0, 1, 2)
     val st = s * t
     val ts = t * s
 
@@ -216,7 +192,7 @@ object PermutationProps extends Properties("permutations") {
   property("shrink cycle (01234)") = {
     import PermutationGenerator._
     val c = Cycle(0, 1, 2, 3, 4)
-    val p = c.asPermutation(5)
+    val p = c
     val x = shrinkCycle(c)
     val y = shrinkOnce(p)
     val z = shrinkTree(p)
@@ -225,7 +201,7 @@ object PermutationProps extends Properties("permutations") {
       && p.cycles.head == c
       && x == Cycle(1, 2, 3, 4)
       && y.size == 1
-      && y.head == x.asPermutation(5)
+      && y.head == x
       && z.size == 4
       )
   }
@@ -270,7 +246,7 @@ object PermutationProps extends Properties("permutations") {
 
   // test shrinking of an intentionally failing false property
 
-  implicit val permutationShrinker: Shrink[Permutation] = Shrink {
+  implicit val permutationShrinker: Shrink[Perm] = Shrink {
     x => PermutationGenerator.shrinkTree(x).toStream
   }
 
@@ -298,146 +274,64 @@ object PermutationProps extends Properties("permutations") {
     }
   }
 
-//  property("permGenerator works") = {
-//    def testn(n: Int): Boolean = {
-//      val nfact = Combinatorics.factorial(n).toInt
-//      val x = PermGenerator.permGenerator(n)
-//      val plist = (1 to Combinatorics.factorial(n).toInt).map(_ => x())
-//      plist.toSet.size == nfact
-//    }
-//
-//    testn(2) &&
-//      testn(3) &&
-////      testn(4) &&
-////      testn(5) &&
-//    true
-//  }
+  property("(123)*(12)==(13)") = {
+    Cycle(1, 2, 3) * Cycle(1, 2) == Cycle(1, 3)
+  }
 
-//  property("permGenerator is unbounded") = {
-//    def testnm(n: Int, m: Int): Boolean = {
-//      val pg = PermGenerator.permGenerator(n)
-//      val perms = for (_ <- (1 to m)) yield pg()
-//      perms.size == m
-//    }
-//
-//    testnm(4, 400) // there are 24 permutationson 4 elements, 400 just keeps cycling
-//  }
-
-//////  property("perfStream generates n! permutations and starts with identity") = {
-//////    def testn(n: Int): Boolean = {
-//////      val nfact = Combinatorics.factorial(n).toInt
-//////      val x = PermGenerator.permStream(n)
-//////      val plist = x.take(nfact)
-//////      plist.head.isIdentity &&
-//////        plist.toSet.size == nfact
-////
-////    }
-//
-//    testn(2) && testn(3) && testn(4) && testn(5)
-//  }
-
-//  property("perfStream is repeating cycle") = {
-//    def testn(n: Int): Boolean = {
-//      val nfact = Combinatorics.factorial(n).toInt
-//      val x = PermGenerator.permStream(n)
-//      val plist = x.take(2 * nfact + 1) // should start and end with identity
-//      println(s"Debug: n=$n, n!=$nfact, ${plist.size}, ${plist.toSet.size}, ${plist.filter(_.isIdentity).size}")
-//
-//      plist.filter(_.isIdentity).size == 3 &&
-//        plist.head.isIdentity &&
-//        plist.last.isIdentity
-//
-//    }
-//
-//    testn(2) &&
-//      testn(3) &&
-////      testn(4) &&
-////      testn(5) &&
-//      true
-//  }
-
-//  property("perfIterator head is identity") = {
-//    val it = PermGenerator.permIterator(5)
-//    it.hasNext &&
-//      it.next.isIdentity
-//  }
-
-//  property("perfIterator(n) n in (2 to 5) works") = {
-//    def testn(n: Int) = {
-//
-//      val dfact = Combinatorics.factorial(n)
-//      require(Math.ulp(dfact) < 1.0d, s"n! for n=$n is too large to represent as an exact Double integer: $dfact")
-//      val nfact = dfact.toLong
-//      require(nfact <= Int.MaxValue, s"n! for n=$n is too larget to represent as an Int: ${nfact}")
-//
-//      val it = PermGenerator.permIterator(n)
-//      val perms = it.take(nfact.toInt).toList // 120 = 5!
-//      println(s"DEBUG perms.size == ${perms.size}")
-//      println(s"DEBUG perms.set.size == ${perms.toSet.size}")
-//      val iterator_exhausted = !it.hasNext
-//      val expected_size = perms.size == nfact
-//      val expected_head = perms.head.isIdentity
-//      val expected_set_size = perms.toSet.size == nfact
-//
-//      iterator_exhausted &&
-//        expected_size &&
-//        expected_set_size &&
-//        expected_head &&
-//        true
-//    }
-//
-//    //testn(5) &&
-//    //testn(4) &&
-//    testn(3) &&
-//      testn(2) &&
-//      true
-//  }
-
-//  property("permGenerator(-1, 0, 1) all work expected") = {
-//    val neg1fails = Try {
-//      PermGenerator.permGenerator(-1)
-//    } match {
-//      case Success(pg) => false
-//      case Failure(e) => true
-//    }
-//    val zerosuccess = Try {
-//      PermGenerator.permGenerator(0)
-//    } match {
-//      case Success(pg) => true
-//      case Failure(e) => false
-//    }
-//    val onesuccess = Try {
-//      PermGenerator.permGenerator(1)
-//    } match {
-//      case Success(pg) => true
-//      case Failure(e) => false
-//    }
-//    neg1fails && zerosuccess && onesuccess
-//  }
-
-  //  property("permGenerator(500) performs some basic operations") = {
-  //    val it = PermGenerator.permIterator(100)
-  //    val totake = 25
-  //    val t500 = it.take(totake).toList
-  //    t500.head.isIdentity &&
-  //    t500.size == totake &&
-  //    t500.toSet.size == totake &&
-  //    t500.head != t500.last &&
-  //    true
-  //
-  //  }
-
-  //  property("permGenerator for degree 6") = {
-  //    val f = PermGenerator.permGenerator(6)
-  //    (0 to 722).foreach(_ => f.apply())
-  //    true
-  //  }
-  //
-  //  property("permGenerator for degree 7") = {
-  //    val f = PermGenerator.permGenerator(7)
-  //    (0 to 5040+2).foreach(_ => f.apply())
-  //    true
-  //  }
+  def pairGenerator(n: Int, m: Int): Gen[(Perm, Perm)] = {
+    for {
+      p1 <- PermutationGenerator.uniformPermutations(n)
+      p2 <- PermutationGenerator.uniformPermutations(m)
+    } yield (p1, p2)
+  }
 
 
+  property("different degree permutations can be multiplied") = forAll(pairGenerator(5, 7)) { case (p5, p7) =>
+    val x = ('0' to '6') // first 7 digits
+
+    val p57 = p5 * p7
+    val p75 = p7 * p5
+
+    val p5_p7_x = p5 actingOn (p7 actingOn x)
+    val p7_p5_x = p7 actingOn (p5 actingOn x)
+    val p57_x = p57 actingOn x
+    val p75_x = p75 actingOn x
+
+    val assertion = (p57).degree == 7 &&
+      (p75).degree == 7 &&
+      p5_p7_x == p57_x &&
+      p7_p5_x == p75_x
+    if (!assertion) {
+      println(s"p5 = $p5")
+      println(s"p7 = $p7")
+      println(s"p57 = $p57")
+      println(s"p5_p7_x = $p5_p7_x")
+      println(s"p57_x   = $p57_x")
+      println(s"p75 = $p75")
+      println(s"p7_p5_x = $p7_p5_x")
+      println(s"p75_x   = $p75_x")
+    }
+      assertion
+
+  }
+
+  property("actOn works on a specific case") = {
+    val p1 = (Cycle(1, 2, 3) actingOn List(0, 1, 2, 3)) == List(0, 3, 1, 2)
+    val p2 = (Permutation(0, 2, 3, 1) actingOn List(0, 1, 2, 3)) == List(0, 3, 1, 2)
+    p1 && p2
+  }
+
+  property("actOn works in general") = forAll(PermutationGenerator.uniformPermutations(5)) { p =>
+    val s = p actingOn (0 to 4).toList
+    val assertion = (0 to 4).forall( i=> i == p.pmap(s(i)))
+    assertion
+  }
+
+  property("actOn works with inverse") = forAll(PermutationGenerator.uniformPermutations(5)) { p =>
+    val s = p.actingOn(0 to 4)
+    val pi = p.inverse
+    val t = pi.actingOn(s)
+    val assertion = t == (0 to 4)
+    assertion
+  }
 }

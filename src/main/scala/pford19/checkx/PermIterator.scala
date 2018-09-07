@@ -3,9 +3,10 @@ package pford19.checkx
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 import Combinatorics._
+import javax.swing.TransferHandler.TransferSupport
 
 
-object PermGenerator {
+object PermIterator {
 
   val DEBUGGING_ON = false
   val DEBUG_LOOP_INTERNAL_ON = false
@@ -39,21 +40,22 @@ object PermGenerator {
     * @param callCount number of calls
     */
   case class IterationState(degree: Int,
-                            p: mutable.ArraySeq[Int],
-                            d: mutable.ArraySeq[Int],
-                            perm: Permutation,
-                            lastTransposition: Cycle,
+                            //                            p: mutable.ArraySeq[Int],
+                            p: AlgolArray,
+                            d: AlgolArray,
+                            perm: Perm,
+                            lastTransposition: Transposition,
                             callCount: Int) {
 
     require(degree >= 0, dumpState("require degree >= 0"))
-    require(p.size == degree + 1, dumpState("require p.size==degree+1)"))
-    require(p.size == d.size, dumpState("require p.size==d.size)"))
-    require(perm.degree == degree, dumpState(s"require perm.degree == degree, but perm.degree=${perm.degree}"))
+    //    require(p.size == degree + 1, dumpState("require p.size==degree+1)"))
+    //    require(p.size == d.size, dumpState("require p.size==d.size)"))
+    require(perm.degree <= degree, dumpState(s"require perm.degree <= degree, but perm.degree=${perm.degree}"))
 
     def dumpState(msg: String): String =
       s"""$msg
          | degree=${this.degree}, call count=${this.callCount}
-         | p=${this.p.tail}, d=${this.d.tail}, lastTrans=${this.lastTransposition} perm=${this.perm.cyclicRepresentation}
+         | p=${this.p}, d=${this.d}, lastTrans=${this.lastTransposition} perm=${this.perm.cyclicRepresentation}
         """.stripMargin
 
   }
@@ -86,7 +88,7 @@ object PermGenerator {
   }
 
   object CombinedState {
-    private val UNUSED_SLOT: Int = -99
+    //private val UNUSED_SLOT: Int = -99
 
     /**
       * Initialize a PG_State object from permutation `s`.
@@ -121,20 +123,17 @@ object PermGenerator {
 
     def initialIterationState(degree: Int): IterationState = {
       // These vectors are copied from the original algorithm.
-      // They are declared as Algol arrays with index range[2:Degree].
-      // Scala equivalent is an array of size (degree+1) with slots 0 and 1 unused.
-      // Slot 0 is unused because the algol algorithm indexes the permuted set from 1.
-      // Slot 1 is unused because the algol algorithm only requires degree-1 slots indexed from 2 (if 2 >= degree)
-      // Active slots are indexed from 2 to degree. For degree 0 or 1 there are no active slots.
-      // For trival cases degree = 0 or 1 (since S(0) = S(1) = I) these arrays have size 1 and 2 respectively.
-      val newd = mutable.ArraySeq.fill(degree + 1)(1)
-      val newp = mutable.ArraySeq.fill(degree + 1)(0)
+      // They are declared as Algol arrays with inclusive index range[2:Degree], or range[Degree:Degree] for the
+      // trivial cases of degree = 0 or 1.
+      val min = if (degree >= 2) 2 else degree
+      val newpa = AlgolArray(min, degree, fill = 0)
+      val newda = AlgolArray(min, degree, fill = 1)
 
       val result = new IterationState(degree = degree,
-        p = newp,
-        d = newd,
+        p = newpa,
+        d = newda,
         perm = PermGroup(degree).identity,
-        lastTransposition = Cycle(0),
+        lastTransposition = if (degree < 2) Transposition(0, 1) else Transposition(degree - 2, degree - 1),
         callCount = 0)
       result
     }
@@ -188,13 +187,43 @@ object PermGenerator {
     }
   }
 
-  /** Finite iterator over degree! distinct permutations of degree `degree`.
+  /** Finite iterator over `degree!` distinct permutations of degree `degree`.
+    * <p>
+    * One interesting property of the generated sequence of permutations
+    * is that successive permutations differ by a basic transposition.
+    * <p>
+    * A __basic__ __transposition__ is one that transposes consecutive elements. For instance, the following are the 3 basic
+    * transpositions on the set `(0 to 3)`
+    * {{{
+    *     (0 1)
+    *     (1 2)
+    *     (2 3)
+    * }}}
+    * Whereas the following are NOT basic: {{{
+    *     (0 2)
+    *     (0 3)
+    *     (1 3)
+    * }}}
+    * In general, for permutations of degree `n`, there are `n-1` basic transpositions.
+    * <p>
+    * So, for successive permutations in the iteration sequence, the following is true: {{{
+    *       val it = permutationIterator(n)
+    *       var p = it.next
+    *       while(it.hasNext) {
+    *          val q = it.next
+    *          val t = p.inverse * q // solving for t in the equation q = p * t // FIXME check this logic, is q=p*t or q=t*p?
+    *          assert(t.isTransposition)
+    *          assert(t.asTransposition.isBasic) // t.j and t.k are consecutive
+    *          p = q
+    *       }
+    * }}}
+    * <p>
     *
-    * @param degree permudation degree, size of set acted on, >= 0
+    * @param degree permutation degree, size of set acted on, >= 0
     * @return iterator over all permutations of given degree, identity is last
     */
 
-  def permutationIterator(degree: Int): Iterator[Permutation] = degree match {
+  def permutationIterator(degree: Int): Iterator[Perm] = degree match {
     case 0 => List(PermGroup(0).identity).toIterator
     case 1 => List(PermGroup(1).identity).toIterator
     case _ => stateIterator(degree).map(_.perm)
@@ -205,7 +234,7 @@ object PermGenerator {
     * <p>
     * The following pseudo code captures this semantic
     * {{{
-    *   val ps: Seq[Permutation] = permIterator(degree).toSeq
+    *   val ps: Seq[Permutation] = permutationIterator(degree).toSeq
     *   val ts: Seq[Cycle] = transpositionIterator(degree).toSeq
     *   assert(ps.size = ts.size + 1)
     *   (0 to ps.size-1).foreach {
@@ -218,7 +247,7 @@ object PermGenerator {
     * @return iterator over all permutations of given degree, identity is last
     */
 
-  def transpositionIterator(degree: Int): Iterator[Cycle] = degree match {
+  def transpositionIterator(degree: Int): Iterator[Transposition] = degree match {
     case 0 => Iterator.empty
     case 1 => Iterator.empty
     case _ => stateIterator(degree).drop(1).map(_.lastTransposition)
@@ -249,15 +278,32 @@ object PermGenerator {
 
   }
 
-  def nextPermutation2(state0: IterationState): IterationState = {
+  /** Next permutation for degree >= 2. Degree 0 and 1 are trivial (trival permutation group)
+    * and handled directly in `nextPermutation`.
+    * <p>
+    * [[IterationState]] encapsulates a permutation, that basic translation that generates it from its predecessor,
+    * and a call count. It also encapsulates the slightly ''magic'' p and d arrays from which the next basic transposition
+    * is computed.
+    * <p>
+    * The essence of algorithm are the following steps
+    *   . update `p` and `d` vectors
+    *   . determine a basic transformation `t` from `p`, `d` and internal counters
+    *   . set the new permutation to be `t*startingState.permutation`
+    *   . return a new state encapsulating updated `p` and `d`, `t` and the new permutation
+    *
+    * @param startingState starting state for this iteration
+    * @return next state
+    */
+
+  private def nextPermutation2(startingState: IterationState): IterationState = {
 
 
-    var iterationState = state0
+    var iterationState = startingState
     // Copy p and d to allow them to be mutated in place locally.
-    // These ArraySeq are returned in the result state.
-    val p: mutable.ArraySeq[Int] = state0.p.clone()
-    val d: mutable.ArraySeq[Int] = state0.d.clone()
-    var localState = StateOps.initialLocalState(state0.degree)
+    // These mutated arrays are returned, by reference, in the result state.
+    val p: AlgolArray = startingState.p.copy()
+    val d: AlgolArray = startingState.d.copy()
+    var localState = StateOps.initialLocalState(startingState.degree)
 
     def mutateState(f: => Any) = {
       f // evalute f for side effects on localState and iterationState
@@ -270,7 +316,7 @@ object PermGenerator {
     mutateState {
       // init_p_and_d
       assert(!localState.reinitialize_on_entry, localState.dumpState(("expect reinit on entry false")))
-      localState = localState.copy(n = state0.degree, k = 0, goto_final_exit = false, goto_transpose = false, reinitialize_on_entry = false)
+      localState = localState.copy(n = startingState.degree, k = 0, goto_final_exit = false, goto_transpose = false, reinitialize_on_entry = false)
       iterationState = iterationState.copy(callCount = iterationState.callCount + 1)
     }
 
@@ -283,12 +329,17 @@ object PermGenerator {
 
     }
 
-    assert(localState.k == 0 && localState.n == state0.degree && !localState.goto_transpose && !localState.goto_final_exit && !localState.reinitialize_on_entry, localState.dumpState("failed assertion on entry"))
+    assert(localState.k == 0 &&
+      localState.n == startingState.degree &&
+      !localState.goto_transpose &&
+      !localState.goto_final_exit &&
+      !localState.reinitialize_on_entry,
+      localState.dumpState("failed assertion on entry"))
 
     loopCount = 0
     var loopStartIteration = iterationState.copy()
     val loopStartLocal = localState.copy()
-    val MAX_LOOP_COUNT = state0.degree - 1
+    val MAX_LOOP_COUNT = startingState.degree - 1
     logLoopState("loop start", loopCount)
     do {
 
@@ -342,8 +393,8 @@ object PermGenerator {
 
 
       loopCount += 1
-      assert(loopCount <= state0.degree - 1,
-        s"loop count $loopCount exceeds max ${state0.degree - 1}" +
+      assert(loopCount <= startingState.degree - 1,
+        s"loop count $loopCount exceeds max ${startingState.degree - 1}" +
           s", local state=${localState.dumpState("end of loop body")}" +
           s", iteration state=${iterationState.dumpState("end of loop body")}"
       )
@@ -381,7 +432,7 @@ object PermGenerator {
       val toggled_transpose = loopStartLocal.goto_transpose != localState.goto_transpose
       val exclusive_toggle = toggled_final != toggled_transpose
       assert(exclusive_toggle, s"final or transpose, but not both ${localState.dumpState("loop exit")}")
-      val ddiff = iterationState.d.tail.tail.sum - loopStartIteration.d.tail.tail.sum
+      val ddiff = iterationState.d.rep.sum - loopStartIteration.d.rep.sum
       val ndiff = localState.n - loopStartLocal.n
       val kdiff = localState.k - loopStartLocal.k
       val d_mutated = if (loopStartIteration.d != iterationState.d) f"d${ddiff}%+2d" else "   "
@@ -415,8 +466,8 @@ object PermGenerator {
       val t = localState.q + localState.k
       assert(t > 0, localState.dumpState("q > 0"))
       assert(t < iterationState.degree, localState.dumpState(s"q < degree=${iterationState.degree}"))
-      val trans = Cycle(t - 1, t) // Cycles act on (0 to degree-1)
-      val newperm = iterationState.perm * trans
+      val trans = Transposition(t - 1, t) // Cycles act on (0 to degree-1)
+      val newperm = trans * iterationState.perm
       iterationState = iterationState.copy(
         perm = newperm,
         lastTransposition = trans,
@@ -427,7 +478,7 @@ object PermGenerator {
 
     mutateState {
       if (localState.reinitialize_on_entry) {
-        iterationState = StateOps.initialIterationState(state0.degree)
+        iterationState = StateOps.initialIterationState(startingState.degree)
           .copy(callCount = iterationState.callCount, lastTransposition = iterationState.lastTransposition)
       }
     }
@@ -436,11 +487,11 @@ object PermGenerator {
 
 
     // call count incremented by 1
-    assert(iterationState.callCount == state0.callCount + 1)
+    assert(iterationState.callCount == startingState.callCount + 1)
 
     // permutation has been permuted
     // since degree >= 2, don't have to worry about trival cases of degree 0 and 1
-    assert(iterationState.perm != state0.perm)
+    assert(iterationState.perm != startingState.perm)
 
     // degree! is cycle length, perm should be the identity when call count is a multiple of the cycle length
     // degreeFactorial == None signals that degree! is too large to be represented as a Long
@@ -450,7 +501,7 @@ object PermGenerator {
       /** degree! (factorial), if it is small enough to be represented as an exact Double integer value. (37 bits), otherwise
         * -1.  Used to assert postcondition on cycles for small degree.
         */
-      val d = Combinatorics.longFactorial(state0.degree)
+      val d = Combinatorics.longFactorial(startingState.degree)
       if (d.nonEmpty)
         assert(iterationState.callCount % d.get != 0 || iterationState.perm.isIdentity)
     }
@@ -458,6 +509,45 @@ object PermGenerator {
     iterationState
   }
 }
+
+
+/** Mutable array with indices from `min` to `max` inclusive.
+  * <p>
+  * Underlying [[Array]] of size `(max-min+1)` is exposed as `rep`.
+  * <p>
+  *
+  * @param min minimum index
+  * @param max maximum index
+  */
+
+case class AlgolArray(val min: Int, val rep: Array[Int]) {
+
+  val max: Int = min + rep.size - 1
+
+  def apply(i: Int): Int = rep(i - min)
+
+  def update(i: Int, n: Int) = (rep(i - min) = n)
+
+  override def equals(obj: scala.Any): Boolean = obj match {
+    case aa: AlgolArray => (min == aa.min && rep == aa.rep)
+    case _ => false
+  }
+
+  override def hashCode(): Int = rep.hashCode()
+
+  override def toString: String = {
+    rep.toString
+  }
+}
+
+object AlgolArray {
+  def apply(min: Int, max: Int, fill: Int = 0) = {
+    val result = new AlgolArray(min, new Array[Int](max - min + 1))
+    (min to max).foreach(result(_) = fill)
+    result
+  }
+}
+
 
 object ALGOL_SOURCE {
   """
