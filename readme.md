@@ -60,19 +60,37 @@ It has three classes
 - `case class Permutation(rep: List[Int])`
 
 `PermGroup` represents the full permutation group on n-elements, also known as the Symmetric group.
-It can produce selected elements and subsets of the full permutation group but does not generate them all \(that's a TODO).
-They get big fast. For example, `PermGroup(10)` has `10! = 3,628,800` elements. 
+It can produce selected elements and subsets of the full permutation group. 
+    
+`PermutationIterator` 
+iterates over all `n!` (factorial) permutations of degree `n`. Recall that `n!` grows
+very large very fast. 
+For example, `PermGroup(10)` has `10! = 3,628,800` elements. `20! = 2,432,902,008,176,640,000` (over 2 quintillion), 
+while <code>100! = 9.33 * 10<sup>157</sup></code>.
 
-`Permutation` instances are individual single permutations, elements of a `PermGroup`. 
+The implementation is a true iterator and generates only one value at a time. It only needs to preserve a small amount of 
+prior state to generate the next value. So, for example, it is possible to iterator over the 3 million plus permutations
+of degree 10 without having to allocate storage for all of them. 
 
-`Cycle` instances are special permutations
+`Permutation` instances are individual general permutations. 
+
+`Cycle` instances are special permutations whose action is cyclic, the non-fixed points form a single orbit
+
+`Transposition` instances are cycles of just 2 elements
+
+`Identity` is a static object representing the permutation that doesn't permute anything.
+
+`Perm` is a trait common to the above types of permutation.
+
+`Pmap` provides a common minimal representation for any permutation. It encapsulates a `Map[Int,Int]` that is (1) an *automorphism* and (2) has no fixed points. A `Map` is 
+an automorphism if its key set and value set are identical. Having no fixed points makes the map minimal in size. 
 
 
 ### Generators
 
 `checkx` include some new generators 
  - `orderedPick` \[done but not deterministic]
- - `permutations` \[done but not determinis]
+ - `permutations` \[done but not deterministic]
  - `partitions`
 
 ## TODO
