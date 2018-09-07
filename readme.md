@@ -55,9 +55,30 @@ Support for finite permutation groups (the mathemtatical kind).
 Wikipedia references for [Permutation Groups](https://en.wikipedia.org/wiki/Permutation_group), and [Permutations](https://en.wikipedia.org/wiki/Permutation#Cycle_notation)
 
 It has three classes
-- `case lass PermGroup(n: Int)`
-- `case class Cycle(rep: List[Int])`
-- `case class Permutation(rep: List[Int])`
+- `trait Perm`
+- `case class Pmap(rep: Map[Int,Int])`
+- `object Identity extends Perm`
+- `class Transposition(rep: (Int, Int)) extends Perm`
+- `class Cycle(rep: Seq[Int]) extends Perm`
+- `class Permutation(rep: Seq[Int]) extends Perm`
+- `class PermGroup(n: Int)`
+
+`Perm` is a trait common to the above types of permutation. Some common implementations are provided. In particular 
+`toString`, `final equals` and `final hashCode`
+
+`Pmap` provides a common minimal representation for any permutation. It encapsulates a `Map[Int,Int]` 
+that is (1) an *automorphism* and (2) has no fixed points. A `Map` is 
+an automorphism if its key set and value set are identical. Having no fixed points makes the map minimal in size. 
+
+`Identity` is a static object representing the permutation that doesn't permute anything.
+
+`Transposition` instances are cycles of just 2 elements. Transpositions are the building block for all other permutations.
+
+`Cycle`instances are permutations whose action is cyclic. That is, the non-fixed points form a single orbit
+
+`Permutation` instances are individual general permutations. `Permutation` instances because they are general can represent 
+the same permutation as `Identity`, or a `Transposition`, or `Cycle`. Because of the shared `equals` a `Permutation` instance
+will compare as equal (`==`) to an equivalent `Cycle` or `Transposition` instance.
 
 `PermGroup` represents the full permutation group on n-elements, also known as the Symmetric group.
 It can produce selected elements and subsets of the full permutation group. 
@@ -70,20 +91,8 @@ while <code>100! = 9.33 * 10<sup>157</sup></code>.
 
 The implementation is a true iterator and generates only one value at a time. It only needs to preserve a small amount of 
 prior state to generate the next value. So, for example, it is possible to iterator over the 3 million plus permutations
-of degree 10 without having to allocate storage for all of them. 
-
-`Permutation` instances are individual general permutations. 
-
-`Cycle` instances are special permutations whose action is cyclic, the non-fixed points form a single orbit
-
-`Transposition` instances are cycles of just 2 elements
-
-`Identity` is a static object representing the permutation that doesn't permute anything.
-
-`Perm` is a trait common to the above types of permutation.
-
-`Pmap` provides a common minimal representation for any permutation. It encapsulates a `Map[Int,Int]` that is (1) an *automorphism* and (2) has no fixed points. A `Map` is 
-an automorphism if its key set and value set are identical. Having no fixed points makes the map minimal in size. 
+of degree 10 without having to allocate storage for more than one at a time. This, combined with `ScalaCheck` style generators,
+supports certain styles of exhaustive testing (at least for small N).
 
 
 ### Generators
